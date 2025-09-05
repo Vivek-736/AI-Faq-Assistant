@@ -73,7 +73,7 @@ export function Footer() {
         </div>
 
         <div className="mt-12 pt-8 border-t border-border text-center text-muted-foreground">
-          <p>&copy; 2024 AskNest. All rights reserved.</p>
+          <p>&copy; 2025 AskNest. All rights reserved.</p>
         </div>
       </div>
     </footer>
