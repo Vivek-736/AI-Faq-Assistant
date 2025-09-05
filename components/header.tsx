@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button"
 import { Menu, X } from "lucide-react"
 import Image from "next/image"
+import Link from "next/link"
 import { useState } from "react"
 
 export function Header() {
@@ -24,10 +25,14 @@ export function Header() {
             <a href="#how-it-works" className="text-muted-foreground hover:text-foreground transition-colors">
               How It Works
             </a>
-            <Button variant="outline" className="mr-2 cursor-pointer bg-transparent">
-              Sign In
-            </Button>
-            <Button className="cursor-pointer">Get Started</Button>
+            <Link href="/dashboard">
+              <Button variant="outline" className="cursor-pointer bg-transparent">
+                Sign In
+              </Button>
+            </Link>
+            <Link href="/dashboard">
+              <Button className="cursor-pointer">Get Started</Button>
+            </Link>
           </nav>
           <button className="md:hidden" onClick={() => setIsMenuOpen(!isMenuOpen)}>
             {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
@@ -44,8 +49,12 @@ export function Header() {
                 How It Works
               </a>
               <div className="flex flex-col space-y-2 pt-4">
-                <Button variant="outline">Sign In</Button>
-                <Button>Get Started</Button>
+                <Link href="/dashboard">
+                  <Button variant="outline">Sign In</Button>
+                </Link>
+                <Link href="/dashboard">
+                  <Button>Get Started</Button>
+                </Link>
               </div>
             </nav>
           </div>

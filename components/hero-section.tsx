@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button"
 import { ArrowRight, MessageCircle } from "lucide-react"
+import Link from "next/link"
 
 export function HeroSection() {
   return (
@@ -18,14 +19,18 @@ export function HeroSection() {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4">
-              <Button size="lg" className="text-lg px-8 py-6 cursor-pointer">
-                Start Free Trial
-                <ArrowRight className="ml-2 h-5 w-5" />
-              </Button>
-              <Button variant="outline" size="lg" className="text-lg px-8 py-6 bg-transparent cursor-pointer">
-                <MessageCircle className="mr-2 h-5 w-5" />
-                See Demo
-              </Button>
+              <Link href={'/dashboard'}>
+                <Button size="lg" className="text-lg px-8 py-6 cursor-pointer">
+                  Start Free Trial
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Button>
+              </Link>
+              <Link href={'/dashboard'}>
+                <Button variant="outline" size="lg" className="text-lg px-8 py-6 bg-transparent cursor-pointer">
+                  <MessageCircle className="mr-2 h-5 w-5" />
+                  See Demo
+                </Button>
+              </Link>
             </div>
           </div>
 
