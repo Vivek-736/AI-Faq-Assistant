@@ -3,7 +3,15 @@
 import { useState, useEffect } from 'react'
 import { useUser } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
-import { Upload, Users, FileText, Plus, Copy, Check } from 'lucide-react'
+import { Upload, Users, FileText, Plus, Copy, Check, Building2, MessageSquare } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 interface User {
   uid: string
@@ -21,17 +29,26 @@ interface Organization {
   invite_code: string
 }
 
+interface OrgStats {
+  documents: number
+  faqs: number
+  members: number
+}
+
 export default function Dashboard() {
   const { user: clerkUser } = useUser()
   const router = useRouter()
   
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [organization, setOrganization] = useState<Organization | null>(null)
+  const [orgStats, setOrgStats] = useState<OrgStats>({ documents: 0, faqs: 0, members: 0 })
   const [loading, setLoading] = useState(true)
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [showJoinForm, setShowJoinForm] = useState(false)
   const [copied, setCopied] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [isCreating, setIsCreating] = useState(false)
+  const [isJoining, setIsJoining] = useState(false)
 
   const [orgName, setOrgName] = useState('')
   const [orgDescription, setOrgDescription] = useState('')
@@ -50,14 +67,13 @@ export default function Dashboard() {
       const data = await response.json()
       
       if (data.user) {
+        console.log('User data fetched:', data.user) // Debug log
         setCurrentUser(data.user)
-        if (data.user.role === 'member') {
-          router.push('/chat')
-          return
-        }
         if (data.user.organization_id) {
-          fetchOrganization(data.user.organization_id)
+          await fetchOrganization(data.user.organization_id)
         }
+      } else {
+        console.error('No user data found in response:', data)
       }
     } catch (error) {
       console.error('Error checking user status:', error)
@@ -68,10 +84,17 @@ export default function Dashboard() {
 
   const fetchOrganization = async (orgId: string) => {
     try {
+      console.log('Fetching organization with ID:', orgId) // Debug log
       const response = await fetch(`/api/org/${orgId}`)
       const data = await response.json()
-      if (data.organization) {
+      if (response.ok && data.organization) {
+        console.log('Organization data fetched:', data.organization) // Debug log
         setOrganization(data.organization)
+        if (data.stats) {
+          setOrgStats(data.stats)
+        }
+      } else {
+        console.error('Failed to fetch organization:', data.error || 'No organization data')
       }
     } catch (error) {
       console.error('Error fetching organization:', error)
@@ -80,6 +103,7 @@ export default function Dashboard() {
 
   const createOrganization = async (e: React.FormEvent) => {
     e.preventDefault()
+    setIsCreating(true)
     try {
       const response = await fetch('/api/org/create', {
         method: 'POST',
@@ -88,23 +112,29 @@ export default function Dashboard() {
       })
       
       const data = await response.json()
-      if (response.ok) {
-        setOrganization(data.organization)
+      console.log('Create organization response:', data) // Debug log
+      if (response.ok && data.organization) {
+        setOrganization(data.organization) // Set organization state immediately
+        setCurrentUser(data.user) // Set user state from create response
         setShowCreateForm(false)
         setOrgName('')
         setOrgDescription('')
-        await checkUserStatus()
+        await fetchOrganization(data.organization.uid) // Fetch organization stats
       } else {
+        console.error('Organization creation failed:', data.error)
         alert(data.error || 'Failed to create organization')
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating organization:', error)
-      alert('Failed to create organization')
+      alert(error.message || 'Failed to create organization')
+    } finally {
+      setIsCreating(false)
     }
   }
 
   const joinOrganization = async (e: React.FormEvent) => {
     e.preventDefault()
+    setIsJoining(true)
     try {
       const response = await fetch('/api/org/join', {
         method: 'POST',
@@ -113,14 +143,23 @@ export default function Dashboard() {
       })
       
       const data = await response.json()
+      console.log('Join organization response:', data) // Debug log
       if (response.ok) {
-        router.push('/chat')
+        await checkUserStatus()
+        if (data.organization) {
+          setOrganization(data.organization)
+          await fetchOrganization(data.organization.uid)
+        }
+        router.push('/dashboard')
       } else {
+        console.error('Join organization failed:', data.error)
         alert(data.error || 'Failed to join organization')
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error joining organization:', error)
-      alert('Failed to join organization')
+      alert(error.message || 'Failed to join organization')
+    } finally {
+      setIsJoining(false)
     }
   }
 
@@ -147,12 +186,16 @@ export default function Dashboard() {
       const data = await response.json()
       if (response.ok) {
         alert('PDF uploaded and processed successfully!')
+        if (organization) {
+          await fetchOrganization(organization.uid)
+        }
       } else {
+        console.error('File upload failed:', data.error)
         alert(data.error || 'Failed to upload PDF')
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error uploading file:', error)
-      alert('Failed to upload PDF')
+      alert(error.message || 'Failed to upload PDF')
     } finally {
       setUploading(false)
     }
@@ -166,278 +209,306 @@ export default function Dashboard() {
     }
   }
 
+  console.log('Current states:', { currentUser, organization, orgStats }) // Debug log
+
   if (loading) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-black"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
       </div>
     )
   }
 
   if (!currentUser) {
     return (
-      <div className="min-h-screen bg-white p-4">
-        <div className="max-w-3xl mx-auto">
-          <h1 className="text-2xl font-bold text-black mb-6">AskNest</h1>
-          
-          <div className="grid md:grid-cols-2 gap-4">
-            <div className="border border-black p-6">
-              <Plus className="mx-auto h-12 w-12 text-black mb-4" />
-              <h2 className="text-lg font-bold mb-2">Create Organization</h2>
-              <p className="text-black mb-4">Start your own organization</p>
-              <button
-                onClick={() => setShowCreateForm(true)}
-                className="border border-black px-4 py-2 hover:bg-black hover:text-white"
-              >
-                Create
-              </button>
-            </div>
+      <div className="min-h-screen bg-white p-8">
+        <div className="max-w-4xl mx-auto">
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="text-center pb-8">
+              <CardTitle className="text-3xl font-light text-gray-900 mb-4">Welcome to AskNest</CardTitle>
+              <p className="text-gray-600">Get started by creating or joining an organization</p>
+            </CardHeader>
+            <CardContent>
+              <div className="grid md:grid-cols-2 gap-8">
+                {/* Create Organization */}
+                <Dialog open={showCreateForm} onOpenChange={setShowCreateForm}>
+                  <DialogTrigger asChild>
+                    <Card className="border-2 border-dashed border-gray-200 hover:border-gray-300 transition-colors cursor-pointer group">
+                      <CardContent className="flex flex-col items-center justify-center p-8 text-center">
+                        <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4 group-hover:bg-gray-100 transition-colors">
+                          <Plus className="h-8 w-8 text-gray-400" />
+                        </div>
+                        <h3 className="text-xl font-medium mb-2">Create Organization</h3>
+                        <p className="text-gray-600 text-sm mb-4">Start your own organization and manage your team</p>
+                        <Button variant="outline" className="border-gray-300 cursor-pointer">
+                          Create Organization
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle className="text-xl font-medium">Create Organization</DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={createOrganization} className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="name">Organization Name</Label>
+                        <Input
+                          id="name"
+                          value={orgName}
+                          onChange={(e: any) => setOrgName(e.target.value)}
+                          required
+                          className="border-gray-200"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="description">Description (Optional)</Label>
+                        <Textarea
+                          id="description"
+                          value={orgDescription}
+                          onChange={(e: any) => setOrgDescription(e.target.value)}
+                          className="border-gray-200 resize-none"
+                          rows={3}
+                        />
+                      </div>
+                      <div className="flex gap-3 pt-4">
+                        <Button 
+                          type="submit" 
+                          className="flex-1 bg-gray-900 hover:bg-gray-800"
+                          disabled={isCreating}
+                        >
+                          {isCreating ? 'Creating...' : 'Create'}
+                        </Button>
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          onClick={() => setShowCreateForm(false)}
+                          className="flex-1"
+                          disabled={isCreating}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </form>
+                  </DialogContent>
+                </Dialog>
 
-            <div className="border border-black p-6">
-              <Users className="mx-auto h-12 w-12 text-black mb-4" />
-              <h2 className="text-lg font-bold mb-2">Join Organization</h2>
-              <p className="text-black mb-4">Join using an invite code</p>
-              <button
-                onClick={() => setShowJoinForm(true)}
-                className="border border-black px-4 py-2 hover:bg-black hover:text-white"
-              >
-                Join
-              </button>
-            </div>
-          </div>
+                {/* Join Organization */}
+                <Dialog open={showJoinForm} onOpenChange={setShowJoinForm}>
+                  <DialogTrigger asChild>
+                    <Card className="border-2 border-dashed border-gray-200 hover:border-gray-300 transition-colors cursor-pointer group">
+                      <CardContent className="flex flex-col items-center justify-center p-8 text-center">
+                        <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4 group-hover:bg-gray-100 transition-colors">
+                          <Users className="h-8 w-8 text-gray-400" />
+                        </div>
+                        <h3 className="text-xl font-medium mb-2">Join Organization</h3>
+                        <p className="text-gray-600 text-sm mb-4">Join an existing organization using an invite code</p>
+                        <Button variant="outline" className="border-gray-300 cursor-pointer">
+                          Join Organization
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle className="text-xl font-medium">Join Organization</DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={joinOrganization} className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="invite-code">Invite Code</Label>
+                        <Input
+                          id="invite-code"
+                          value={inviteCode}
+                          onChange={(e: any) => setInviteCode(e.target.value)}
+                          placeholder="Enter invite code"
+                          required
+                          className="border-gray-200"
+                        />
+                      </div>
+                      <div className="flex gap-3 pt-4">
+                        <Button 
+                          type="submit" 
+                          className="flex-1 bg-gray-900 hover:bg-gray-800"
+                          disabled={isJoining}
+                        >
+                          {isJoining ? 'Joining...' : 'Join'}
+                        </Button>
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          onClick={() => setShowJoinForm(false)}
+                          className="flex-1"
+                          disabled={isJoining}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </form>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </CardContent>
+          </Card>
         </div>
-
-        {showCreateForm && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-            <div className="bg-white p-6 max-w-sm w-full">
-              <h2 className="text-xl font-bold mb-4">Create Organization</h2>
-              <form onSubmit={createOrganization}>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-black mb-1">
-                    Name
-                  </label>
-                  <input
-                    type="text"
-                    value={orgName}
-                    onChange={(e) => setOrgName(e.target.value)}
-                    className="w-full px-2 py-1 border border-black"
-                    required
-                  />
-                </div>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-black mb-1">
-                    Description
-                  </label>
-                  <textarea
-                    value={orgDescription}
-                    onChange={(e) => setOrgDescription(e.target.value)}
-                    className="w-full px-2 py-1 border border-black"
-                    rows={3}
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    type="submit"
-                    className="flex-1 border border-black px-4 py-2 hover:bg-black hover:text-white"
-                  >
-                    Create
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowCreateForm(false)}
-                    className="flex-1 border border-black px-4 py-2 hover:bg-black hover:text-white"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {showJoinForm && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-            <div className="bg-white p-6 max-w-sm w-full">
-              <h2 className="text-xl font-bold mb-4">Join Organization</h2>
-              <form onSubmit={joinOrganization}>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-black mb-1">
-                    Invite Code
-                  </label>
-                  <input
-                    type="text"
-                    value={inviteCode}
-                    onChange={(e) => setInviteCode(e.target.value)}
-                    className="w-full px-2 py-1 border border-black"
-                    placeholder="Enter code"
-                    required
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    type="submit"
-                    className="flex-1 border border-black px-4 py-2 hover:bg-black hover:text-white"
-                  >
-                    Join
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowJoinForm(false)}
-                    className="flex-1 border border-black px-4 py-2 hover:bg-black hover:text-white"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-white p-4">
-      <div className="max-w-4xl mx-auto">
-        <div className="border border-black p-6 mb-4">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-2xl font-bold text-black">{organization?.name || 'Dashboard'}</h1>
-              <p className="text-black">{organization?.description}</p>
-            </div>
-            <button
-              onClick={() => router.push('/chat')}
-              className="border border-black px-4 py-2 hover:bg-black hover:text-white"
-            >
-              Chat
-            </button>
-          </div>
-
-          {organization && (
-            <div className="border border-black p-4 mb-4">
-              <h2 className="text-lg font-bold text-black mb-2">Invite Members</h2>
-              <div className="flex items-center gap-2">
-                <code className="bg-white px-3 py-1 border border-black font-mono">
-                  {organization.invite_code}
-                </code>
-                <button
-                  onClick={copyInviteCode}
-                  className="border border-black px-3 py-1 hover:bg-black hover:text-white"
-                >
-                  {copied ? <Check size={16} /> : <Copy size={16} />}
-                </button>
+    <div className="min-h-screen bg-white">
+      <div className="max-w-6xl mx-auto p-8">
+        {/* Header */}
+        <Card className="border-0 shadow-sm mb-8">
+          <CardContent className="p-8">
+            <div className="flex items-start justify-between mb-6">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
+                  <Building2 className="h-6 w-6 text-gray-600" />
+                </div>
+                <div>
+                  <h1 className="text-3xl font-light text-gray-900">{organization?.name || 'Organization Dashboard'}</h1>
+                  <p className="text-gray-600 mt-1">{organization?.description}</p>
+                </div>
               </div>
-            </div>
-          )}
-        </div>
-
-        <div className="grid lg:grid-cols-2 gap-4">
-          <div className="border border-black p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Upload className="h-6 w-6 text-black" />
-              <h2 className="text-lg font-bold text-black">Upload</h2>
-            </div>
-            
-            <div className="border border-black p-6 text-center">
-              <FileText className="mx-auto h-12 w-12 text-black mb-2" />
-              <h3 className="text-base font-bold mb-2">PDF Files</h3>
-              <p className="text-black mb-4">Upload PDFs to extract FAQs</p>
-              
-              <label className="cursor-pointer">
-                <input
-                  type="file"
-                  accept=".pdf"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                  disabled={uploading || !organization}
-                />
-                <span className={`inline-block px-4 py-2 border border-black ${
-                  uploading || !organization
-                    ? 'text-black opacity-50 cursor-not-allowed'
-                    : 'hover:bg-black hover:text-white'
-                }`}>
-                  {uploading ? 'Processing...' : 'Choose PDF'}
-                </span>
-              </label>
+              <Button 
+                onClick={() => router.push('/chat')}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                <MessageSquare className="w-4 h-4 mr-2" />
+                Go to Chat
+              </Button>
             </div>
 
-            {uploading && (
-              <div className="mt-4">
-                <div className="border border-black p-3">
-                  <div className="flex items-center gap-2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-black"></div>
-                    <span className="text-black">Processing...</span>
-                  </div>
+            {/* Invite Code Section */}
+            {organization && (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-6">
+                <h2 className="text-lg font-medium text-gray-900 mb-2">Invite Team Members</h2>
+                <p className="text-gray-600 mb-4">Share this invite code with your team members:</p>
+                <div className="flex items-center gap-3">
+                  <code className="bg-white px-4 py-2 rounded border font-mono text-sm flex-1">
+                    {organization.invite_code}
+                  </code>
+                  <Button
+                    onClick={copyInviteCode}
+                    variant="outline"
+                    size="sm"
+                    className="border-gray-300"
+                  >
+                    {copied ? <Check size={16} /> : <Copy size={16} />}
+                    <span className="ml-2">{copied ? 'Copied!' : 'Copy'}</span>
+                  </Button>
                 </div>
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Main Content Grid */}
+        <div className="grid lg:grid-cols-3 gap-8">
+          {/* Upload Section */}
+          <div className="lg:col-span-2">
+            <Card className="border-0 shadow-sm">
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <Upload className="h-6 w-6 text-gray-600" />
+                  <CardTitle className="text-xl font-medium text-gray-900">Upload Documents</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="border-2 border-dashed border-gray-200 rounded-lg p-12 text-center">
+                  <FileText className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                  <h3 className="text-lg font-medium mb-2">Upload PDF Files</h3>
+                  <p className="text-gray-600 mb-6 text-sm">
+                    Upload PDF documents to automatically extract and add FAQs to your knowledge base
+                  </p>
+                  
+                  <label className="cursor-pointer">
+                    <input
+                      type="file"
+                      accept=".pdf"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                      disabled={uploading || !organization}
+                    />
+                    <Button
+                      disabled={uploading || !organization}
+                      className={uploading ? "bg-gray-300" : "bg-gray-900 hover:bg-gray-800"}
+                    >
+                      {uploading ? 'Processing...' : 'Choose PDF File'}
+                    </Button>
+                  </label>
+                </div>
+
+                {uploading && (
+                  <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                      <span className="text-blue-700 text-sm">Processing PDF and extracting FAQs...</span>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
 
-          <div className="border border-black p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Users className="h-6 w-6 text-black" />
-              <h2 className="text-lg font-bold text-black">Overview</h2>
-            </div>
+          <div className="space-y-6">
+            <Card className="border-0 shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-lg font-medium text-gray-900">Quick Stats</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded">
+                  <span className="text-gray-600 text-sm">Documents</span>
+                  <span className="text-xl font-semibold">{orgStats.documents}</span>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded">
+                  <span className="text-gray-600 text-sm">FAQs</span>
+                  <span className="text-xl font-semibold">{orgStats.faqs}</span>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-gray-50 rounded">
+                  <span className="text-gray-600 text-sm">Members</span>
+                  <span className="text-xl font-semibold">{orgStats.members}</span>
+                </div>
+              </CardContent>
+            </Card>
 
-            <div className="space-y-4">
-              <div className="border border-black p-4">
-                <h3 className="font-bold text-black mb-2">Stats</h3>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="text-center">
-                    <div className="text-xl font-bold text-black">0</div>
-                    <div className="text-sm text-black">Documents</div>
+            <Card className="border-0 shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-lg font-medium text-gray-900">Getting Started</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3 text-sm">
+                  <div className="flex items-start gap-3">
+                    <span className="w-5 h-5 bg-gray-900 text-white rounded-full text-xs flex items-center justify-center mt-0.5">1</span>
+                    <span className="text-gray-600">Upload PDF documents to build your knowledge base</span>
                   </div>
-                  <div className="text-center">
-                    <div className="text-xl font-bold text-black">0</div>
-                    <div className="text-sm text-black">FAQs</div>
+                  <div className="flex items-start gap-3">
+                    <span className="w-5 h-5 bg-gray-900 text-white rounded-full text-xs flex items-center justify-center mt-0.5">2</span>
+                    <span className="text-gray-600">Share the invite code with team members</span>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <span className="w-5 h-5 bg-gray-900 text-white rounded-full text-xs flex items-center justify-center mt-0.5">3</span>
+                    <span className="text-gray-600">Start using the chat interface for Q&A</span>
                   </div>
                 </div>
-              </div>
-
-              <div className="border border-black p-4">
-                <h3 className="font-bold text-black mb-2">Activity</h3>
-                <div className="text-black text-sm">
-                  <p>Organization created</p>
-                  <p>Admin account set up</p>
-                  <p>Ready to upload</p>
-                </div>
-              </div>
-
-              <div className="border border-black p-4">
-                <h4 className="font-bold text-black mb-2">Getting Started</h4>
-                <ul className="text-black text-sm space-y-1">
-                  <li>Upload PDFs</li>
-                  <li>Share invite code</li>
-                  <li>Use chat for Q&A</li>
-                </ul>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
 
-        <div className="mt-4 border border-black p-6">
-          <h2 className="text-lg font-bold text-black mb-4">Manage</h2>
-          
-          <div className="grid md:grid-cols-3 gap-4">
-            <button className="p-4 border border-black hover:bg-black hover:text-white">
-              <FileText className="h-6 w-6 text-black mb-2" />
-              <h3 className="font-bold">Documents</h3>
-              <p className="text-sm">Browse documents</p>
-            </button>
-            
-            <button className="p-4 border border-black hover:bg-black hover:text-white">
-              <Plus className="h-6 w-6 text-black mb-2" />
-              <h3 className="font-bold">Add FAQ</h3>
-              <p className="text-sm">Create FAQs manually</p>
-            </button>
-            
-            <button className="p-4 border border-black hover:bg-black hover:text-white">
-              <Users className="h-6 w-6 text-black mb-2" />
-              <h3 className="font-bold">Members</h3>
-              <p className="text-sm">Manage members</p>
-            </button>
+        {!organization && (
+          <div className="mt-12 text-center">
+            <p className="text-gray-600">You are not part of any organization yet.</p>
+            <div className="mt-4 flex justify-center gap-4">
+              <Button onClick={() => setShowCreateForm(true)} className="bg-gray-900 hover:bg-gray-800">
+                Create Organization
+              </Button>
+              <Button onClick={() => setShowJoinForm(true)} variant="outline" className="border-gray-300">
+                Join Organization
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   )
