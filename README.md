@@ -26,5 +26,3 @@ Instead of searching scattered PDFs, emails, or notices, users can simply **ask 
 - **Contentstack APIs** – Store & fetch FAQ/policy content.  
 - **Gemini AI API** – Conversational responses.  
 - **Tailwind + shadcn/ui** – Beautiful UI components.  
-
----
